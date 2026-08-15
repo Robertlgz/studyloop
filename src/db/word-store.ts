@@ -41,6 +41,8 @@ export interface FsrsCard {
     reps: number;
     lapses: number;
     lastReview: string | null;
+    interval?: number;
+    consecutiveGood?: number;
 }
 
 export interface ReviewLog {
