@@ -8,7 +8,7 @@
         "strict": false,
         "moduleResolution": "bundler",
         "allowImportingTsExtensions": true,
-        "verbatimModuleSyntax": true,
+        "verbatimModuleSyntax": false,
         "moduleDetection": "force",
         "resolveJsonModule": true,
         "isolatedModules": true,
