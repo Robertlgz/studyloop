@@ -1,4 +1,4 @@
-import { DictionaryEngine } from "./engine";
+import { DictionaryEngine, EngineResult } from "./engine";
 import { YoudaoEngine } from "./youdao/engine";
 import { CambridgeEngine } from "./cambridge/engine";
 import { HjdictEngine } from "./hjdict/engine";
