@@ -8,6 +8,7 @@ import { SettingTab } from "./settings";
 import { WordStore } from "./db/word-store";
 import store from "./store";
 import { SEARCH_ICON, SEARCH_PANEL_VIEW, LEARN_PANEL_VIEW, STAT_VIEW_TYPE, DATA_PANEL_VIEW } from "./constant";
+import { SearchPanelView } from "./views/SearchPanelView";
 
 export default class StudyLoop extends Plugin {
     settings: StudyLoopSettings;
@@ -95,8 +96,9 @@ export default class StudyLoop extends Plugin {
     }
 
     registerViews() {
-        // 占位符：各视图将在后续阶段实现
-        // this.registerView(SEARCH_PANEL_VIEW, (leaf) => new SearchPanelView(leaf, this));
+        // P1: 注册查词面板视图
+        this.registerView(SEARCH_PANEL_VIEW, (leaf) => new SearchPanelView(leaf, this));
+        // 后续阶段注册其他视图
         // this.registerView(LEARN_PANEL_VIEW, (leaf) => new LearnPanelView(leaf, this));
         // this.registerView(STAT_VIEW_TYPE, (leaf) => new StatView(leaf, this));
         // this.registerView(DATA_PANEL_VIEW, (leaf) => new DataPanelView(leaf, this));
