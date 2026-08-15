@@ -48,7 +48,7 @@
 <script setup lang="ts">
 import { Notice } from "obsidian";
 import { ref, shallowRef, computed, onMounted, onUnmounted, getCurrentInstance } from "vue";
-import type StudyLoop from "@/plugin";
+import type StudyLoop from "@/main";
 import { searchAll, getEngines } from "@/dictionary/list";
 import { playAudio } from "@/utils/helpers";
 import DictItem from "./DictItem.vue";
