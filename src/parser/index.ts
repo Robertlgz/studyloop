@@ -2,7 +2,7 @@
 // 基于 retext-english 进行英文分词，Aho-Corasick 匹配词组
 // 输出带状态标记的 HTML，用于阅读视图渲染
 
-import { unified, Processor } from "unified";
+import { unified } from "unified";
 import retextEnglish from "retext-english";
 import { Root, Content, Literal, Parent, Sentence } from "nlcst";
 import { modifyChildren } from "unist-util-modify-children";
@@ -25,7 +25,7 @@ export interface Phrase {
 }
 
 export class TextParser {
-    private processor: Processor;
+    private processor: any;
     private phrases: Phrase[] = [];
     private words: Map<string, WordStatus> = new Map();
     private pIdx = 0;
