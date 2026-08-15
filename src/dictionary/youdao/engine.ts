@@ -1,5 +1,5 @@
 import { DictionaryEngine, EngineResult, CollinsEntry } from "../engine";
-import { getText, getInnerHTML, handleNoResult, handleNetWorkError, fetchDirtyDOM, removeChild, HTMLString } from "../helpers";
+import { getText, getInnerHTML, fetchDirtyDOM, removeChild } from "../helpers";
 
 export const YoudaoEngine: DictionaryEngine = {
     id: "youdao",
@@ -8,20 +8,10 @@ export const YoudaoEngine: DictionaryEngine = {
     requiresApiKey: false,
 
     async search(text: string): Promise<EngineResult> {
-        return fetchDirtyDOM(`https://dict.youdao.com/w/${encodeURIComponent(text.replace(/\s+/g, ' '))}`)
-            .catch(handleNetWorkError)
-            .then(doc => checkResult(doc, text))
-            .catch(handleNoResult);
+        const doc = await fetchDirtyDOM(`https://dict.youdao.com/w/${encodeURIComponent(text.replace(/\s+/g, ' '))}`);
+        return handleDOM(doc, text);
     },
 };
-
-function checkResult(doc: DocumentFragment, word: string): Promise<EngineResult> {
-    const $typo = doc.querySelector('.error-typo');
-    if (!$typo) {
-        return handleDOM(doc, word);
-    }
-    return handleNoResult();
-}
 
 function handleDOM(doc: DocumentFragment, word: string): EngineResult {
     const result: EngineResult = {
