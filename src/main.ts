@@ -77,7 +77,15 @@ export default class StudyLoop extends Plugin {
         this.addCommand({
             id: "review-due-cards",
             name: "复习待复习词",
-            callback: () => { new Notice("复习 (待实现)"); }
+            callback: () => {
+                const dueWords = this.wordStore.getDueWords();
+                if (dueWords.length === 0) {
+                    new Notice("🎉 没有待复习的词");
+                    return;
+                }
+                new Notice(`📚 今日 ${dueWords.length} 个词待复习`);
+                // TODO: 打开复习视图
+            }
         });
 
         // 创建 Vue 全局 app
