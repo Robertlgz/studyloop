@@ -11,6 +11,7 @@ import { SEARCH_ICON, SEARCH_PANEL_VIEW, LEARN_PANEL_VIEW, STAT_VIEW_TYPE, DATA_
 import { SearchPanelView } from "./views/SearchPanelView";
 import { ReadingView } from "./views/ReadingView";
 import { LearnPanelView } from "./views/LearnPanelView";
+import { StatView } from "./views/StatView";
 import { READING_VIEW_TYPE } from "./constant";
 
 export default class StudyLoop extends Plugin {
@@ -110,6 +111,7 @@ export default class StudyLoop extends Plugin {
         this.registerView(SEARCH_PANEL_VIEW, (leaf) => new SearchPanelView(leaf, this));
         this.registerView(READING_VIEW_TYPE, (leaf) => new ReadingView(leaf, this));
         this.registerView(LEARN_PANEL_VIEW, (leaf) => new LearnPanelView(leaf, this));
+        this.registerView(STAT_VIEW_TYPE, (leaf) => new StatView(leaf, this));
     }
 
     async setMarkdownView(leaf: WorkspaceLeaf, focus = true) {
