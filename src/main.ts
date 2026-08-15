@@ -9,6 +9,8 @@ import { WordStore } from "./db/word-store";
 import store from "./store";
 import { SEARCH_ICON, SEARCH_PANEL_VIEW, LEARN_PANEL_VIEW, STAT_VIEW_TYPE, DATA_PANEL_VIEW } from "./constant";
 import { SearchPanelView } from "./views/SearchPanelView";
+import { ReadingView } from "./views/ReadingView";
+import { READING_VIEW_TYPE } from "./constant";
 
 export default class StudyLoop extends Plugin {
     settings: StudyLoopSettings;
@@ -98,10 +100,22 @@ export default class StudyLoop extends Plugin {
     registerViews() {
         // P1: 注册查词面板视图
         this.registerView(SEARCH_PANEL_VIEW, (leaf) => new SearchPanelView(leaf, this));
+        // P2: 注册阅读视图
+        this.registerView(READING_VIEW_TYPE, (leaf) => new ReadingView(leaf, this));
         // 后续阶段注册其他视图
         // this.registerView(LEARN_PANEL_VIEW, (leaf) => new LearnPanelView(leaf, this));
         // this.registerView(STAT_VIEW_TYPE, (leaf) => new StatView(leaf, this));
         // this.registerView(DATA_PANEL_VIEW, (leaf) => new DataPanelView(leaf, this));
+    }
+
+    async setMarkdownView(leaf: WorkspaceLeaf, focus = true) {
+        await leaf.setViewState(
+            {
+                type: "markdown",
+                state: leaf.view.getState(),
+            } as any,
+            { focus },
+        );
     }
 
     async activateView(viewType: string, side: "left" | "right" | "tab") {
