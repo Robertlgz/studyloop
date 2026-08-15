@@ -1,4 +1,4 @@
-import { Notice, Plugin, Menu, Platform } from "obsidian";
+import { Notice, Plugin, Menu, Platform, WorkspaceLeaf } from "obsidian";
 import { createApp } from "vue";
 import type { App as VueApp } from "vue";
 
@@ -13,7 +13,7 @@ import { ReadingView } from "./views/ReadingView";
 import { READING_VIEW_TYPE } from "./constant";
 
 export default class StudyLoop extends Plugin {
-    settings: StudyLoopSettings;
+    declare settings: StudyLoopSettings;
     wordStore: WordStore;
     vueApp: VueApp;
     appEl: HTMLElement;
