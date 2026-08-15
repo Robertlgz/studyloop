@@ -20,7 +20,13 @@
     "author": "",
     "license": "MIT",
     "dependencies": {
+        "@types/nlcst": "^2.0.3",
+        "nlcst-to-string": "^4.0.0",
+        "retext-english": "^5.0.0",
         "ts-fsrs": "^5.4.1",
+        "unified": "^11.0.5",
+        "unist-util-modify-children": "^4.0.0",
+        "unist-util-visit": "^5.1.0",
         "vue": "^3.5.39"
     },
     "devDependencies": {
