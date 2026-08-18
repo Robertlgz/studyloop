@@ -13,6 +13,8 @@ import { ReadingView } from "./views/ReadingView";
 import { LearnPanelView } from "./views/LearnPanelView";
 import { StatView } from "./views/StatView";
 import { READING_VIEW_TYPE } from "./constant";
+import { AnkiAutoSync } from "./anki/auto-sync";
+import { syncReviewDatabase, syncWordDatabase, triggerVariousComplementsReload } from "./db/sync";
 
 export default class StudyLoop extends Plugin {
     declare settings: StudyLoopSettings;
@@ -20,6 +22,9 @@ export default class StudyLoop extends Plugin {
     vueApp: VueApp;
     appEl: HTMLElement;
     store: typeof store = store;
+    ankiSync: AnkiAutoSync;
+    popupSearchApp: any = null;
+    popupSearchEl: HTMLElement | null = null;
 
     async onload() {
         await this.loadSettings();
@@ -28,6 +33,8 @@ export default class StudyLoop extends Plugin {
         // 初始化词库（从 worddb.json 加载）
         this.wordStore = new WordStore(this);
         await this.wordStore.load();
+        // 词库变更时自动同步数据库（防抖 2 秒）
+        this.wordStore.onChange = () => this.scheduleSync();
 
         // 注册视图
         this.registerViews();
@@ -73,7 +80,26 @@ export default class StudyLoop extends Plugin {
         this.addCommand({
             id: "search-word",
             name: "查词",
-            callback: () => { this.activateView(SEARCH_PANEL_VIEW, "left"); }
+            callback: () => {
+                const selection = window.getSelection()?.toString().trim();
+                if (selection && selection.length <= 200) {
+                    this.queryWord(selection);
+                } else {
+                    this.activateView(SEARCH_PANEL_VIEW, "left");
+                }
+            }
+        });
+        this.addCommand({
+            id: "search-word-select",
+            name: "划词翻译（选中文字）",
+            callback: () => {
+                const selection = window.getSelection()?.toString().trim();
+                if (selection && selection.length <= 200) {
+                    this.queryWord(selection);
+                } else {
+                    new Notice("请先用鼠标选中要翻译的文字");
+                }
+            }
         });
         this.addCommand({
             id: "review-due-cards",
@@ -84,8 +110,31 @@ export default class StudyLoop extends Plugin {
                     new Notice("🎉 没有待复习的词");
                     return;
                 }
-                new Notice(`📚 今日 ${dueWords.length} 个词待复习`);
-                // TODO: 打开复习视图
+                this.openReviewModal();
+            }
+        });
+        this.addCommand({
+            id: "studyloop-anki-sync",
+            name: "立即同步 Anki",
+            callback: async () => {
+                new Notice("正在同步到 Anki...");
+                const count = await this.ankiSync.syncNow();
+                if (count < 0) {
+                    new Notice("❌ Anki 未运行或 AnkiConnect 不可用");
+                } else {
+                    new Notice(`✅ 已同步 ${count} 个词到 Anki`);
+                }
+            }
+        });
+        this.addCommand({
+            id: "studyloop-sync-databases",
+            name: "同步复习数据库（写复习数据.txt / 词汇统计.txt）",
+            callback: async () => {
+                new Notice("正在同步数据库...");
+                const reviewCount = await syncReviewDatabase(this);
+                const wordCount = await syncWordDatabase(this);
+                await triggerVariousComplementsReload(this);
+                new Notice(`✅ 已同步 ${reviewCount} 个复习块 + ${wordCount} 个词汇统计`);
             }
         });
 
@@ -94,6 +143,16 @@ export default class StudyLoop extends Plugin {
         this.vueApp = createApp({});
         this.vueApp.config.globalProperties.plugin = this;
         this.vueApp.mount(this.appEl);
+
+        // 启动 Anki 自动同步
+        this.ankiSync = new AnkiAutoSync(this);
+        this.ankiSync.start();
+
+        // 划词翻译（选中文字 + 功能键 → 查词）
+        this.registerMouseup();
+
+        // 复习点击发音（SR 容器内点单词发音，A4 修复）
+        this.registerLeftClick();
     }
 
     onunload() {
@@ -102,6 +161,8 @@ export default class StudyLoop extends Plugin {
         this.app.workspace.detachLeavesOfType(DATA_PANEL_VIEW);
         this.app.workspace.detachLeavesOfType(STAT_VIEW_TYPE);
         this.wordStore.save();
+        this.ankiSync?.stop();
+        this.closePopupSearch();
         this.vueApp.unmount();
         this.appEl.remove();
         this.appEl = null;
@@ -139,6 +200,153 @@ export default class StudyLoop extends Plugin {
         this.app.workspace.revealLeaf(
             this.app.workspace.getLeavesOfType(viewType)[0]
         );
+    }
+
+    // ============ 划词翻译 ============
+
+    /** 查词（触发划词翻译的核心方法） */
+    async queryWord(word: string, position?: { x: number; y: number }) {
+        if (!word || !word.trim()) return;
+
+        // 弹窗模式：如果启用 popup_search，使用浮动弹窗
+        if (this.settings.popup_search) {
+            this.openPopupSearch(word.trim(), position);
+            if (this.settings.auto_pron) this.playWordAudio(word.trim());
+            return;
+        }
+
+        // 侧边栏模式
+        await this.activateView(SEARCH_PANEL_VIEW, "left");
+        dispatchEvent(new CustomEvent("sl-search", {
+            detail: { selection: word.trim() },
+        }));
+
+        if (this.settings.auto_pron) {
+            this.playWordAudio(word.trim());
+        }
+    }
+
+    /** 打开浮动弹窗查词 */
+    openPopupSearch(word: string, position?: { x: number; y: number }) {
+        const { createApp } = require("vue");
+        // 关闭旧的弹窗
+        this.closePopupSearch?.();
+        const { PopupSearch } = require("./views/PopupSearch.vue");
+        const el = document.body.createDiv({ cls: "sl-popup-root" });
+        const app = createApp(PopupSearch);
+        app.config.globalProperties.plugin = this;
+        app.mount(el);
+        this.popupSearchApp = app;
+        this.popupSearchEl = el;
+        // 派发查词事件
+        dispatchEvent(new CustomEvent("sl-search", {
+            detail: {
+                selection: word,
+                position: position || { x: window.innerWidth - 400, y: 80 },
+            },
+        }));
+    }
+
+    /** 关闭浮动弹窗 */
+    closePopupSearch() {
+        if (this.popupSearchApp) {
+            this.popupSearchApp.unmount();
+            this.popupSearchApp = null;
+        }
+        if (this.popupSearchEl) {
+            this.popupSearchEl.remove();
+            this.popupSearchEl = null;
+        }
+    }
+
+    /** 播放单词发音 */
+    playWordAudio(word: string) {
+        try {
+            const accent = this.settings.review_prons;
+            const url = `http://dict.youdao.com/dictvoice?type=${accent}&audio=${encodeURIComponent(word)}`;
+            new Audio(url).play();
+        } catch {
+            // ignore audio errors
+        }
+    }
+
+    /** 监听鼠标抬起 → 检查选区 + 功能键 → 划词翻译 */
+    registerMouseup() {
+        this.registerDomEvent(document.body, "pointerup", (evt) => {
+            try {
+                const target = evt.target as HTMLElement;
+                // 跳过插件自身 UI
+                if (target?.matchParent?.(".sl-app, #sl-search, #sl-learn-panel, #sl-reading")) return;
+
+                // 检查功能键
+                const funcKey = this.settings.function_key;
+                if (funcKey === "disable") return;
+                if ((evt as any)[funcKey] !== true) return;
+
+                // 获取选区
+                const selection = window.getSelection()?.toString().trim();
+                if (!selection || selection.length > 200) return;
+
+                // 划词翻译
+                evt.stopImmediatePropagation();
+                this.queryWord(selection, { x: evt.clientX + 10, y: evt.clientY + 10 });
+            } catch {
+                // ignore
+            }
+        });
+    }
+
+    /** 打开复习模态框 */
+    openReviewModal() {
+        const { ReviewModalWrapper } = require("./views/ReviewModalWrapper");
+        const modal = new ReviewModalWrapper(this.app, this);
+        modal.open();
+    }
+
+    /** 监听左键点击 → 复习容器内点单词发音（A4 修复） */
+    registerLeftClick() {
+        this.registerDomEvent(document.body, "click", (evt) => {
+            try {
+                const target = evt.target as HTMLElement;
+                // 复习卡片容器（兼容多种 SR 插件 DOM 结构）
+                const inReviewContext =
+                    target.matchParent(".sr-modal-content") ||
+                    target.matchParent(".sr-flashcard") ||
+                    target.matchParent(".sr-card") ||
+                    target.matchParent(".modal-container") ||
+                    target.matchParent("[class*='sr-']");
+                if (!inReviewContext) return;
+
+                const isWordElement =
+                    target.tagName === "H4" ||
+                    target.hasClass("speaker") ||
+                    target.tagName === "AUDIO";
+                if (!isWordElement) return;
+
+                const word = (target.textContent || "").trim();
+                if (!word || word.length > 50) return;
+                this.playWordAudio(word);
+            } catch {
+                // ignore
+            }
+        });
+    }
+
+    /** 触发数据库同步（防抖） */
+    private syncTimer: number | null = null;
+    scheduleSync() {
+        if (this.syncTimer !== null) clearTimeout(this.syncTimer);
+        this.syncTimer = window.setTimeout(async () => {
+            if (this.settings.auto_refresh_db) {
+                try {
+                    await syncReviewDatabase(this);
+                    await syncWordDatabase(this);
+                    await triggerVariousComplementsReload(this);
+                } catch {
+                    // ignore
+                }
+            }
+        }, 2000);
     }
 
     async loadSettings() {
