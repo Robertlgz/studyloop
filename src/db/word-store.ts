@@ -20,6 +20,7 @@ export interface Word {
     exposureHistory: ExposureDay[];
     fsrs: FsrsCard;
     ankiNoteId: number | null;
+    ankiHash?: string | null;
 }
 
 export interface Sentence {
@@ -198,7 +199,8 @@ export class WordStore {
 
     getDueWords(): Word[] {
         const today = new Date().toISOString().split("T")[0];
-        return [...this.words.values()].filter(w => w.fsrs.due <= today);
+        // 同 fsrs.getDueWords：只返回需要复习的（status>0），避免复习"忽略"词
+        return [...this.words.values()].filter(w => w.status > 0 && w.fsrs.due <= today);
     }
 
     getTodayStats(): { due: number; newWords: number; total: number } {
@@ -238,6 +240,43 @@ export class WordStore {
                 w.exposureHistory = w.exposureHistory.slice(-30);
             }
         }
+        this.markDirty();
+    }
+
+    // ========== streak 打卡 ==========
+    /** 每完成一次复习打卡（连续天数计算） */
+    checkInReview(): void {
+        const today = new Date().toISOString().split("T")[0];
+        const last = this.reviewStreak.lastCheckIn;
+        if (last === today) return; // 今天已打过卡
+        if (last && new Date(today).getTime() - new Date(last).getTime() <= 86400_000) {
+            // 相邻日（含今天）→ 连胜+1
+            this.reviewStreak.current += 1;
+        } else {
+            this.reviewStreak.current = 1;
+        }
+        this.reviewStreak.lastCheckIn = today;
+        this.reviewStreak.best = Math.max(this.reviewStreak.best, this.reviewStreak.current);
+        if (!this.reviewStreak.history.includes(today)) {
+            this.reviewStreak.history.push(today);
+            if (this.reviewStreak.history.length > 365) {
+                this.reviewStreak.history = this.reviewStreak.history.slice(-365);
+            }
+        }
+        this.markDirty();
+    }
+
+    getStreak(): number {
+        return this.reviewStreak.current;
+    }
+
+    // ========== 翻译缓存访问（BilingualView / ReadingArea 共用） ==========
+    getTranslation(text: string, targetLang: string): string | null {
+        return this.translationCache.get(text, targetLang);
+    }
+
+    setTranslation(text: string, translated: string, backend: string, targetLang: string): void {
+        this.translationCache.set(text, translated, backend, targetLang);
         this.markDirty();
     }
 }

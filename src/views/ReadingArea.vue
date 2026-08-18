@@ -10,13 +10,16 @@
                 <span class="sl-bar-learn" :style="{ flex: stats.learn }">{{ displayCount(stats.learn) }}</span>
                 <span class="sl-bar-ignore" :style="{ flex: stats.ignore }">{{ displayCount(stats.ignore) }}</span>
             </div>
-            <button @click="translatePage" class="sl-translate-btn" :disabled="translating">
-                {{ translating ? '翻译中...' : (translated ? '切换原文' : '双语翻译') }}
+            <button @click="toggleBilingual" class="sl-translate-btn" :disabled="translating">
+                {{ translated ? '返回原文' : '双语翻译' }}
             </button>
         </div>
 
-        <!-- 阅读区 -->
-        <div class="sl-text-area" :style="textStyle" v-html="renderedText" @click="onWordClick" />
+        <!-- 阅读区 / 双语区 -->
+        <div v-if="!translated" class="sl-text-area" :style="textStyle" v-html="renderedText" @click="onWordClick" />
+        <div v-else class="sl-bilingual-area">
+            <BilingualView ref="bilingualRef" :text="currentPageText" />
+        </div>
 
         <!-- 分页 -->
         <div class="sl-pagination">
@@ -29,21 +32,23 @@
         <div v-if="reviewWord" class="sl-mini-review" :style="reviewPos">
             <div class="sl-review-word">{{ reviewWord.expression }}</div>
             <button @click="toggleReviewMeaning">{{ showReviewMeaning ? reviewWord.meaning : '点击显示释义' }}</button>
-            <div class="sl-review-btns">
+            <div class="sl-review-btns" v-if="showReviewMeaning">
                 <button v-for="(label, i) in ['Again', 'Hard', 'Good', 'Easy']" :key="i"
-                    @click="rateReview(i)" :class="'sl-rate-' + i">{{ label }}</button>
+                    @click="rateReview(i + 1)" :class="'sl-rate-' + i">{{ label }}</button>
             </div>
         </div>
     </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, onUnmounted, getCurrentInstance } from "vue";
+import { ref, computed, watch, onMounted, onUnmounted, getCurrentInstance, nextTick } from "vue";
 import { Notice, Platform } from "obsidian";
 import type StudyLoop from "@/main";
 import type { ReadingView } from "./ReadingView";
 import { TextParser } from "@/parser/index";
 import store from "@/store";
+import BilingualView from "./BilingualView.vue";
+import { calculateNextDue, getDueWords } from "@/scheduling/fsrs";
 
 const vueThis = getCurrentInstance()!;
 const view = vueThis.appContext.config.globalProperties.view as ReadingView;
@@ -87,25 +92,24 @@ const textStyle = computed(() => ({
     lineHeight: store.lineHeight || "1.8em",
 }));
 
-// 翻译
-const translating = ref(false);
+// 双语模式
 const translated = ref(false);
+const translating = ref(false);
+const bilingualRef = ref<any>(null);
 
-async function translatePage() {
+const currentPageText = computed(() => {
+    const start = (page.value - 1) * pageSize.value;
+    return article.slice(start, start + pageSize.value).join("\n");
+});
+
+async function toggleBilingual() {
     if (translated.value) {
-        // 切换回原文
         translated.value = false;
         await renderCurrentPage();
         return;
     }
-    translating.value = true;
-    try {
-        // 简化版的翻译：用 AI 引擎
-        await renderCurrentPage();
-        translated.value = true;
-    } finally {
-        translating.value = false;
-    }
+    translated.value = true;
+    // BilingualView 自身 onMounted 会翻译，这里无需额外处理
 }
 
 // 渲染当前页
@@ -129,24 +133,27 @@ async function renderCurrentPage() {
     readabilityLevel.value = parser.calcReadability(text).level;
 }
 
-watch([page, pageSize], () => renderCurrentPage(), { immediate: true });
+watch([page, pageSize], () => {
+    if (translated.value) translated.value = false;
+    renderCurrentPage();
+}, { immediate: true });
 
 // 迷你复习
-const reviewWord = ref<{ expression: string; meaning: string } | null>(null);
+const reviewWord = ref<{ expression: string; meaning: string; fsrs: any } | null>(null);
 const showReviewMeaning = ref(false);
 const reviewPos = ref({ top: "0px", left: "0px" });
 
 function onWordClick(evt: MouseEvent) {
+    if (translated.value) return; // 双语模式下不触发迷你复习
     const target = evt.target as HTMLElement;
     if (target.hasClass("sl-word") || target.hasClass("sl-phrase")) {
         const word = target.textContent?.trim() || "";
         const stored = plugin.wordStore.getWord(word);
         if (stored) {
-            reviewWord.value = { expression: stored.expression, meaning: stored.meaning };
+            reviewWord.value = { expression: stored.expression, meaning: stored.meaning, fsrs: stored.fsrs };
             showReviewMeaning.value = false;
-            reviewPos.value = { top: `${evt.clientY + 10}px`, left: `${evt.clientX - 100}px` };
+            reviewPos.value = { top: `${evt.clientY + 10}px`, left: `${Math.max(0, evt.clientX - 100)}px` };
         } else {
-            // 不在词库中，触发查词
             dispatchEvent(new CustomEvent("sl-search", { detail: { selection: word } }));
         }
     } else {
@@ -158,19 +165,39 @@ function toggleReviewMeaning() {
     showReviewMeaning.value = !showReviewMeaning.value;
 }
 
-function rateReview(rating: number) {
+function rateReview(rating: 1 | 2 | 3 | 4) {
     if (!reviewWord.value) return;
     const word = reviewWord.value.expression;
+    const stored = plugin.wordStore.getWord(word);
+    if (!stored) {
+        reviewWord.value = null;
+        showReviewMeaning.value = false;
+        return;
+    }
+
+    const prevConsecutive = stored.fsrs.consecutiveGood || 0;
+    const { card: newCard, status } = calculateNextDue(stored.fsrs, rating, prevConsecutive);
+
+    // 更新词库
+    plugin.wordStore.updateWord(word, {
+        fsrs: newCard,
+        status,
+    });
+    // 打卡 streak
+    plugin.wordStore.checkInReview();
+
+    // 记录复习日志
     plugin.wordStore.addReviewLog({
         word,
         rating,
         date: Math.floor(Date.now() / 1000),
         elapsedDays: 0,
-        scheduledDays: 1,
+        scheduledDays: newCard.interval || 1,
     });
+
     reviewWord.value = null;
     showReviewMeaning.value = false;
-    new Notice(`已记录: ${word} - ${["Again","Hard","Good","Easy"][rating]}`);
+    new Notice(`已记录: ${word} - ${["Again","Hard","Good","Easy"][rating - 1]}`);
 }
 </script>
 
@@ -191,6 +218,7 @@ function rateReview(rating: number) {
 .sl-text-area :deep(.sl-word.familiar) { background: #ffeb3c55; }
 .sl-text-area :deep(.sl-word.known) { background: #9eda5855; }
 .sl-text-area :deep(.sl-word.learned) { background: #4cb05155; }
+.sl-bilingual-area { flex: 1; overflow: auto; }
 .sl-pagination { display: flex; justify-content: center; align-items: center; gap: 8px; padding: 4px; }
 .sl-mini-review { position: fixed; z-index: 1000; background: var(--background-primary); border: 1px solid var(--interactive-accent); border-radius: 8px; padding: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); }
 .sl-review-word { font-weight: bold; font-size: 1.1em; margin-bottom: 4px; }

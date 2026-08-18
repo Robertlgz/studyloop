@@ -21,12 +21,6 @@ export async function syncReviewDatabase(plugin: StudyLoop): Promise<number> {
     const allWords = plugin.wordStore.getAllWords();
     if (allWords.length === 0) return 0;
 
-    // 分类
-    const classified: number[][] = Array.from({ length: 5 }, () => []);
-    allWords.forEach((w, i) => {
-        if (w.status >= 0 && w.status <= 4) classified[w.status].push(i);
-    });
-
     const del = plugin.settings.review_delimiter;
     const today = new Date().toISOString().split("T")[0];
 

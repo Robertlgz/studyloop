@@ -39,11 +39,11 @@ const todayNew = computed(() => {
         return w.date && new Date(w.date * 1000).toISOString().split("T")[0] === today;
     }).length;
 });
-const streak = computed(() => (plugin.wordStore as any).reviewStreak?.current || 0);
+const streak = computed(() => plugin.wordStore.getStreak());
 
 function startReview() {
     started.value = true;
-    // 触发复习命令
+    reviewed.value = 0;
     const app = (plugin as any).app;
     app.commands.executeCommandById("studyloop:review-due-cards");
 }

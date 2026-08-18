@@ -7,14 +7,24 @@ import type { StudyLoopSettings } from "./settings";
 import { SettingTab } from "./settings";
 import { WordStore } from "./db/word-store";
 import store from "./store";
-import { SEARCH_ICON, SEARCH_PANEL_VIEW, LEARN_PANEL_VIEW, STAT_VIEW_TYPE, DATA_PANEL_VIEW } from "./constant";
+import { SEARCH_ICON, SEARCH_PANEL_VIEW, LEARN_PANEL_VIEW, STAT_VIEW_TYPE, DATA_PANEL_VIEW, READING_VIEW_TYPE, REVIEW_QUEUE_VIEW, TODAY_VIEW } from "./constant";
 import { SearchPanelView } from "./views/SearchPanelView";
 import { ReadingView } from "./views/ReadingView";
 import { LearnPanelView } from "./views/LearnPanelView";
 import { StatView } from "./views/StatView";
-import { READING_VIEW_TYPE } from "./constant";
+import { WordSidebarView } from "./views/WordSidebarView";
+import { ReviewQueueView } from "./views/ReviewQueueView";
+import { TodaySessionView } from "./views/TodaySessionView";
+import PopupSearch from "./views/PopupSearch.vue";
+import { ReviewModalWrapper } from "./views/ReviewModalWrapper";
 import { AnkiAutoSync } from "./anki/auto-sync";
 import { syncReviewDatabase, syncWordDatabase, triggerVariousComplementsReload } from "./db/sync";
+import { importFromLL } from "./db/importers/ll-indexeddb";
+import { importFromCSV } from "./db/importers/csv";
+import { importFromKindle } from "./db/importers/kindle";
+import { TextImportModal } from "./views/TextImportModal";
+import { generateReviewStory } from "./ai/story-generator";
+import { escapeHtml } from "./utils/translation";
 
 export default class StudyLoop extends Plugin {
     declare settings: StudyLoopSettings;
@@ -29,6 +39,9 @@ export default class StudyLoop extends Plugin {
     async onload() {
         await this.loadSettings();
         this.addSettingTab(new SettingTab(this.app, this));
+
+        // 同步 settings → store（让字体/行距等设置立即生效）
+        this.syncSettingsToStore();
 
         // 初始化词库（从 worddb.json 加载）
         this.wordStore = new WordStore(this);
@@ -60,22 +73,59 @@ export default class StudyLoop extends Plugin {
             menu.addItem((item) => {
                 item.setTitle("词库列表")
                     .setIcon("database")
-                    .onClick(() => this.activateView(DATA_PANEL_VIEW, "tab"));
+                    .onClick(() => this.activateView(DATA_PANEL_VIEW, "right"));
+            });
+            menu.addItem((item) => {
+                item.setTitle("复习队列")
+                    .setIcon("clock")
+                    .onClick(() => this.activateView(REVIEW_QUEUE_VIEW, "right"));
             });
             menu.addSeparator();
             menu.addItem((item) => {
                 item.setTitle("今日学习")
                     .setIcon("star")
-                    .onClick(() => { new Notice("今日学习 (待实现)"); });
+                    .onClick(() => this.activateView(TODAY_VIEW, "right"));
+            });
+            menu.addItem((item) => {
+                item.setTitle("在阅读视图打开")
+                    .setIcon("reading-glasses")
+                    .onClick(() => this.openReadingView());
+            });
+            menu.addSeparator();
+            menu.addItem((item) => {
+                item.setTitle("导入词库 (Language Learner)")
+                    .setIcon("database")
+                    .onClick(() => this.importFromLL());
+            });
+            menu.addItem((item) => {
+                item.setTitle("导入 CSV")
+                    .setIcon("file-spreadsheet")
+                    .onClick(() => this.openImportModal("CSV 导入", "粘贴 CSV 文本（word,meaning 每行一个）", importFromCSV));
+            });
+            menu.addItem((item) => {
+                item.setTitle("导入 Kindle")
+                    .setIcon("kindle")
+                    .onClick(() => this.openImportModal("Kindle 导入", "粘贴 Kindle 生词本文本（TSV/纯单词）", importFromKindle));
+            });
+            menu.addSeparator();
+            menu.addItem((item) => {
+                item.setTitle("生成 AI 复习故事")
+                    .setIcon("sparkles")
+                    .onClick(() => this.generateStory());
             });
             menu.showAtMouseEvent(evt);
         });
 
-        // 注册命令
+        // ========== 命令注册 ==========
         this.addCommand({
             id: "start-today-session",
             name: "开始今日学习",
-            callback: () => { new Notice("今日学习 (待实现)"); }
+            callback: () => this.activateView(TODAY_VIEW, "right"),
+        });
+        this.addCommand({
+            id: "open-today-session",
+            name: "打开今日学习面板",
+            callback: () => this.activateView(TODAY_VIEW, "right"),
         });
         this.addCommand({
             id: "search-word",
@@ -100,6 +150,16 @@ export default class StudyLoop extends Plugin {
                     new Notice("请先用鼠标选中要翻译的文字");
                 }
             }
+        });
+        this.addCommand({
+            id: "open-reading-view",
+            name: "在阅读视图中打开当前文件",
+            callback: () => this.openReadingView(),
+        });
+        this.addCommand({
+            id: "open-review-queue",
+            name: "打开复习队列侧边栏",
+            callback: () => this.activateView(REVIEW_QUEUE_VIEW, "right"),
         });
         this.addCommand({
             id: "review-due-cards",
@@ -137,6 +197,26 @@ export default class StudyLoop extends Plugin {
                 new Notice(`✅ 已同步 ${reviewCount} 个复习块 + ${wordCount} 个词汇统计`);
             }
         });
+        this.addCommand({
+            id: "import-from-ll",
+            name: "从 Language Learner 导入词库",
+            callback: () => this.importFromLL(),
+        });
+        this.addCommand({
+            id: "import-csv",
+            name: "导入 CSV 词库",
+            callback: () => this.openImportModal("CSV 导入", "粘贴 CSV 文本（word,meaning 每行一个）", importFromCSV),
+        });
+        this.addCommand({
+            id: "import-kindle",
+            name: "导入 Kindle 生词本",
+            callback: () => this.openImportModal("Kindle 导入", "粘贴 Kindle 生词本文本（TSV/纯单词）", importFromKindle),
+        });
+        this.addCommand({
+            id: "generate-review-story",
+            name: "生成 AI 复习故事",
+            callback: () => this.generateStory(),
+        });
 
         // 创建 Vue 全局 app
         this.appEl = document.body.createDiv({ cls: "sl-app" });
@@ -160,6 +240,8 @@ export default class StudyLoop extends Plugin {
         this.app.workspace.detachLeavesOfType(LEARN_PANEL_VIEW);
         this.app.workspace.detachLeavesOfType(DATA_PANEL_VIEW);
         this.app.workspace.detachLeavesOfType(STAT_VIEW_TYPE);
+        this.app.workspace.detachLeavesOfType(REVIEW_QUEUE_VIEW);
+        this.app.workspace.detachLeavesOfType(TODAY_VIEW);
         this.wordStore.save();
         this.ankiSync?.stop();
         this.closePopupSearch();
@@ -173,6 +255,17 @@ export default class StudyLoop extends Plugin {
         this.registerView(READING_VIEW_TYPE, (leaf) => new ReadingView(leaf, this));
         this.registerView(LEARN_PANEL_VIEW, (leaf) => new LearnPanelView(leaf, this));
         this.registerView(STAT_VIEW_TYPE, (leaf) => new StatView(leaf, this));
+        this.registerView(DATA_PANEL_VIEW, (leaf) => new WordSidebarView(leaf, this));
+        this.registerView(REVIEW_QUEUE_VIEW, (leaf) => new ReviewQueueView(leaf, this));
+        this.registerView(TODAY_VIEW, (leaf) => new TodaySessionView(leaf, this));
+    }
+
+    /** 将 settings 同步到 store，使字体/样式设置立即生效 */
+    syncSettingsToStore() {
+        store.fontSize = this.settings.font_size || "";
+        store.fontFamily = this.settings.font_family || "";
+        store.lineHeight = this.settings.line_height || "";
+        store.popupSearch = this.settings.popup_search !== false;
     }
 
     async setMarkdownView(leaf: WorkspaceLeaf, focus = true) {
@@ -202,7 +295,84 @@ export default class StudyLoop extends Plugin {
         );
     }
 
-    // ============ 划词翻译 ============
+    /** 在阅读视图中打开指定文件（或当前激活文件） */
+    async openReadingView(file?: any) {
+        const targetFile = file || this.app.workspace.getActiveFile();
+        if (!targetFile) {
+            new Notice("请先打开一个文件");
+            return;
+        }
+        const leaf = this.app.workspace.getLeaf("tab");
+        await leaf.setViewState({ type: READING_VIEW_TYPE, state: { file: targetFile.path }, active: true });
+        this.app.workspace.revealLeaf(leaf);
+    }
+
+    // ============ 导入功能 ============
+
+    async importFromLL() {
+        try {
+            new Notice("正在从 Language Learner IndexedDB 导入...");
+            const count = await importFromLL(this);
+            new Notice(`✅ 已导入 ${count} 个词`);
+        } catch (e) {
+            new Notice("❌ 导入失败：" + ((e as Error).message || e));
+        }
+    }
+
+    openImportModal(title: string, placeholder: string, onImport: (text: string) => Promise<number>) {
+        new TextImportModal(this.app, title, placeholder, onImport).open();
+    }
+
+    /** 生成 AI 复习故事并保存为笔记 */
+    async generateStory() {
+        if (!this.settings.ai_api_key) {
+            new Notice("请先在设置中配置 AI API Key");
+            return;
+        }
+        const words = this.wordStore.getAllWords().filter(w => w.status > 0 && w.sentences.length > 0);
+        if (words.length === 0) {
+            new Notice("词库中没有含例句的词，无法生成故事");
+            return;
+        }
+        // 取最近学的 5-8 个词
+        const recent = words.slice(-Math.min(8, words.length)).map(w => w.expression);
+        new Notice(`正在生成复习故事（使用 ${recent.length} 个词）...`);
+        try {
+            const story = await generateReviewStory(this, recent, Math.min(5, recent.length));
+            const filename = `复习故事-${new Date().toISOString().slice(0, 10)}.md`;
+            const folder = "复习故事";
+            const fullPath = `${folder}/${filename}`;
+            // 确保文件夹存在
+            const folderFiles = this.app.vault.getAbstractFileByPath(folder);
+            if (!folderFiles) {
+                await this.app.vault.createFolder(folder);
+            }
+            const content = `# ${story.title}
+
+> AI 复习故事 · ${new Date().toLocaleString()}
+> 使用词汇：${story.words.join(", ")}
+
+${story.content}
+
+---
+
+## Quiz
+
+${story.quiz.map((q, i) => `${i + 1}. ${q}`).join("\n")}
+`;
+            await this.app.vault.create(fullPath, content);
+            const file = this.app.vault.getFileByPath(fullPath);
+            if (file) {
+                const leaf = this.app.workspace.getLeaf("tab");
+                await leaf.setViewState({ type: "markdown", state: { file: file.path }, active: true });
+            }
+            new Notice(`✅ 复习故事已生成并打开：${filename}`);
+        } catch (e) {
+            new Notice("❌ 故事生成失败：" + ((e as Error).message || e));
+        }
+    }
+
+    // ============ 查词 / 弹窗 ============
 
     /** 查词（触发划词翻译的核心方法） */
     async queryWord(word: string, position?: { x: number; y: number }) {
@@ -228,10 +398,8 @@ export default class StudyLoop extends Plugin {
 
     /** 打开浮动弹窗查词 */
     openPopupSearch(word: string, position?: { x: number; y: number }) {
-        const { createApp } = require("vue");
         // 关闭旧的弹窗
         this.closePopupSearch?.();
-        const { PopupSearch } = require("./views/PopupSearch.vue");
         const el = document.body.createDiv({ cls: "sl-popup-root" });
         const app = createApp(PopupSearch);
         app.config.globalProperties.plugin = this;
@@ -242,7 +410,7 @@ export default class StudyLoop extends Plugin {
         dispatchEvent(new CustomEvent("sl-search", {
             detail: {
                 selection: word,
-                position: position || { x: window.innerWidth - 400, y: 80 },
+                position: position || { x: Math.min(window.innerWidth - 400, 600), y: 80 },
             },
         }));
     }
@@ -298,7 +466,6 @@ export default class StudyLoop extends Plugin {
 
     /** 打开复习模态框 */
     openReviewModal() {
-        const { ReviewModalWrapper } = require("./views/ReviewModalWrapper");
         const modal = new ReviewModalWrapper(this.app, this);
         modal.open();
     }

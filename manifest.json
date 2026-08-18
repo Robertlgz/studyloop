@@ -1,7 +1,9 @@
 {
     "id": "studyloop",
     "name": "StudyLoop",
-    "version": "0.1.0",
+    "version": "0.10.0",
+    "author": "Robertlgz",
+    "authorUrl": "https://github.com/Robertlgz",
     "minAppVersion": "1.0.0",
     "description": "阅读、查词、复习、Anki 导出、AI 辅助全合一语言学习插件",
     "author": "",
