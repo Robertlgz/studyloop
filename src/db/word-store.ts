@@ -99,6 +99,7 @@ export class WordStore {
     private metadata = { totalWords: 0, createdAt: "", lastSync: "" };
     private saveTimer: number | null = null;
     private dirty = false;
+    onChange: (() => void) | null = null;
 
     constructor(plugin: StudyLoop) {
         this.plugin = plugin;
@@ -177,6 +178,7 @@ export class WordStore {
     addWord(word: Word): void {
         this.words.set(word.expression.toLowerCase(), word);
         this.markDirty();
+        this.onChange?.();
     }
 
     updateWord(expression: string, updates: Partial<Word>): void {
@@ -184,12 +186,14 @@ export class WordStore {
         if (w) {
             Object.assign(w, updates);
             this.markDirty();
+            this.onChange?.();
         }
     }
 
     removeWord(expression: string): void {
         this.words.delete(expression.toLowerCase());
         this.markDirty();
+        this.onChange?.();
     }
 
     getDueWords(): Word[] {
