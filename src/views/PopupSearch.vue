@@ -371,7 +371,7 @@ onUnmounted(() => {
 
 /* 状态 */
 .sl-status { text-align: center; padding: 24px; color: var(--text-muted); font-size: 0.9em; }
-.sl-error { color: #e74c3c; font-size: 0.85em; padding: 16px; }
+.sl-error { color: var(--text-error); font-size: 0.85em; padding: 16px; }
 .sl-spinner {
     display: inline-block; width: 12px; height: 12px;
     border: 2px solid var(--text-muted); border-top-color: var(--interactive-accent);
@@ -398,18 +398,18 @@ onUnmounted(() => {
 .sl-src-cambridge { background: #c0392b; }
 .sl-src-hjdict    { background: #27ae60; }
 .sl-src-deepl     { background: #8e44ad; }
-.sl-src-ai        { background: #e67e22; }
+.sl-src-ai        { background: var(--color-orange); }
 .sl-src-free      { background: #7f8c8d; }
 .sl-card-status { font-size: 0.85em; flex-shrink: 0; }
 .sl-card-status.ok  { color: #27ae60; }
-.sl-card-status.err { color: #bbb; }
+.sl-card-status.err { color: var(--text-faint); }
 .sl-card-meta { font-size: 0.75em; color: var(--text-muted); margin-left: auto; }
 .sl-card-arrow { font-size: 0.68em; color: var(--text-muted); margin-left: auto; }
 
 /* 卡片内容 */
 .sl-card-body { padding: 4px 12px 10px; }
 .sl-prons { margin: 2px 0 6px; }
-.sl-pron { margin-right: 8px; color: #9b59b6; cursor: pointer; font-size: 0.88em; }
+.sl-pron { margin-right: 8px; color: var(--text-accent); cursor: pointer; font-size: 0.88em; }
 .sl-pron:hover { text-decoration: underline; }
 .sl-meaning { font-size: 0.87em; line-height: 1.6; margin-bottom: 6px; }
 .sl-translation {
@@ -434,7 +434,7 @@ onUnmounted(() => {
 .sl-card-empty { padding: 6px 12px; font-size: 0.82em; color: var(--text-muted); font-style: italic; }
 .sl-no-result {
     text-align: center; padding: 16px; font-size: 0.85em;
-    color: #e67e22; background: rgba(230,126,34,0.06);
+    color: var(--color-orange); background: rgba(230,126,34,0.06);
 }
 
 /* 底部 */

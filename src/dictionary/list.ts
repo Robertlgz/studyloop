@@ -50,21 +50,30 @@ export interface SourceResult {
     result: EngineResult;
 }
 
+/** 给一个 Promise 加超时拒绝 */
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+    return Promise.race([
+        promise,
+        new Promise<T>((_, reject) => setTimeout(() => reject(new Error("TIMEOUT")), ms)),
+    ]);
+}
+
 export async function searchAllParallel(
     word: string,
     enabledIds: string[],
     config?: any,
 ): Promise<SourceResult[]> {
     const activeEngines = getEngines(enabledIds);
+    const TIMEOUT = 10000; // 每个引擎最多 10 秒
     const results = await Promise.allSettled(
         activeEngines.map(async (engine) => {
             try {
-                const result = await engine.search(word, config);
+                const result = await withTimeout(engine.search(word, config), TIMEOUT);
                 if (result && (result.meaningHTML || result.translationHTML)) {
                     return { engine, result };
                 }
             } catch {
-                // 该源查询失败，跳过
+                // 该源超时/失败，跳过
             }
             return null;
         }),

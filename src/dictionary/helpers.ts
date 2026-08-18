@@ -17,7 +17,26 @@ export interface SearchFunction<Result> {
 
 export type HTMLString = string;
 
-// ============ HTTP helpers ============
+// ============ HTTP helpers（带超时） ============
+
+const DEFAULT_TIMEOUT = 8000; // 8 秒，超时后自动 reject
+
+/** 带超时的 obsidian request 包装 */
+export async function requestWithTimeout(url: string, method: string = "GET", body?: any, headers?: any, timeoutMs: number = DEFAULT_TIMEOUT): Promise<string> {
+    const param: any = { url, method };
+    if (body) param.body = body;
+    if (headers) param.headers = headers;
+    if (body) param.contentType = "application/json";
+
+    return new Promise<string>((resolve, reject) => {
+        const timer = setTimeout(() => {
+            reject(new Error("TIMEOUT"));
+        }, timeoutMs);
+        request(param)
+            .then((resp) => { clearTimeout(timer); resolve(resp); })
+            .catch((err) => { clearTimeout(timer); reject(err); });
+    });
+}
 
 export async function fetchDirtyDOM(url: string, config?: any): Promise<DocumentFragment> {
     const param: any = { url, method: "GET" };
@@ -30,7 +49,7 @@ export async function fetchDirtyDOM(url: string, config?: any): Promise<Document
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) obsidian/1.0.3 Chrome/100.0.4896.160 Electron/18.3.5 Safari/537.36"
         };
     }
-    const response = await request(param);
+    const response = await requestWithTimeout(param.url, "GET", undefined, param.headers, DEFAULT_TIMEOUT);
     const cleaned = response.replace(/<img.+?>/g, "");
     return sanitizeHTMLToDom(cleaned);
 }

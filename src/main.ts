@@ -1,4 +1,4 @@
-import { Notice, Plugin, Menu, Platform, WorkspaceLeaf } from "obsidian";
+import { Notice, Plugin, Menu, Platform, WorkspaceLeaf, TFile } from "obsidian";
 import { createApp } from "vue";
 import type { App as VueApp } from "vue";
 
@@ -7,7 +7,7 @@ import type { StudyLoopSettings } from "./settings";
 import { SettingTab } from "./settings";
 import { WordStore } from "./db/word-store";
 import store from "./store";
-import { SEARCH_ICON, SEARCH_PANEL_VIEW, LEARN_PANEL_VIEW, STAT_VIEW_TYPE, DATA_PANEL_VIEW, READING_VIEW_TYPE, REVIEW_QUEUE_VIEW, TODAY_VIEW } from "./constant";
+import { SEARCH_ICON, SEARCH_PANEL_VIEW, LEARN_PANEL_VIEW, STAT_VIEW_TYPE, DATA_PANEL_VIEW, READING_VIEW_TYPE, REVIEW_QUEUE_VIEW, TODAY_VIEW, HISTORY_VIEW } from "./constant";
 import { SearchPanelView } from "./views/SearchPanelView";
 import { ReadingView } from "./views/ReadingView";
 import { LearnPanelView } from "./views/LearnPanelView";
@@ -15,6 +15,7 @@ import { StatView } from "./views/StatView";
 import { WordSidebarView } from "./views/WordSidebarView";
 import { ReviewQueueView } from "./views/ReviewQueueView";
 import { TodaySessionView } from "./views/TodaySessionView";
+import { HistoryView } from "./views/HistoryView";
 import PopupSearch from "./views/PopupSearch.vue";
 import { ReviewModalWrapper } from "./views/ReviewModalWrapper";
 import { AnkiAutoSync } from "./anki/auto-sync";
@@ -112,6 +113,12 @@ export default class StudyLoop extends Plugin {
                 item.setTitle("生成 AI 复习故事")
                     .setIcon("sparkles")
                     .onClick(() => this.generateStory());
+            });
+            menu.addSeparator();
+            menu.addItem((item) => {
+                item.setTitle("查词历史")
+                    .setIcon("history")
+                    .onClick(() => this.activateView(HISTORY_VIEW, "right"));
             });
             menu.showAtMouseEvent(evt);
         });
@@ -217,6 +224,11 @@ export default class StudyLoop extends Plugin {
             name: "生成 AI 复习故事",
             callback: () => this.generateStory(),
         });
+        this.addCommand({
+            id: "open-history",
+            name: "打开查词历史",
+            callback: () => this.activateView(HISTORY_VIEW, "right"),
+        });
 
         // 创建 Vue 全局 app
         this.appEl = document.body.createDiv({ cls: "sl-app" });
@@ -233,6 +245,19 @@ export default class StudyLoop extends Plugin {
 
         // 复习点击发音（SR 容器内点单词发音，A4 修复）
         this.registerLeftClick();
+
+        // 文件右键菜单 → 在阅读视图打开
+        this.registerEvent(
+            this.app.workspace.on("file-menu", (menu, file) => {
+                if (file instanceof TFile && file.extension === "md") {
+                    menu.addItem((item) => {
+                        item.setTitle("在 StudyLoop 阅读视图中打开")
+                            .setIcon("highlight-glyph")
+                            .onClick(() => this.openReadingView(file));
+                    });
+                }
+            }),
+        );
     }
 
     onunload() {
@@ -242,6 +267,7 @@ export default class StudyLoop extends Plugin {
         this.app.workspace.detachLeavesOfType(STAT_VIEW_TYPE);
         this.app.workspace.detachLeavesOfType(REVIEW_QUEUE_VIEW);
         this.app.workspace.detachLeavesOfType(TODAY_VIEW);
+        this.app.workspace.detachLeavesOfType(HISTORY_VIEW);
         this.wordStore.save();
         this.ankiSync?.stop();
         this.closePopupSearch();
@@ -258,6 +284,7 @@ export default class StudyLoop extends Plugin {
         this.registerView(DATA_PANEL_VIEW, (leaf) => new WordSidebarView(leaf, this));
         this.registerView(REVIEW_QUEUE_VIEW, (leaf) => new ReviewQueueView(leaf, this));
         this.registerView(TODAY_VIEW, (leaf) => new TodaySessionView(leaf, this));
+        this.registerView(HISTORY_VIEW, (leaf) => new HistoryView(leaf, this));
     }
 
     /** 将 settings 同步到 store，使字体/样式设置立即生效 */
