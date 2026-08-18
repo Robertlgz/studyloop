@@ -56,6 +56,8 @@ import YoudaoView from "@/dictionary/youdao/View.vue";
 import CambridgeView from "@/dictionary/cambridge/View.vue";
 import HjdictView from "@/dictionary/hjdict/View.vue";
 import DeepLView from "@/dictionary/deepl/View.vue";
+import AiView from "@/dictionary/ai/View.vue";
+import FreeView from "@/dictionary/free/View.vue";
 import { SEARCH_ICON, LEARN_PANEL_VIEW } from "@/constant";
 
 const plugin = getCurrentInstance()!.appContext.config.globalProperties.plugin as StudyLoop;
@@ -66,6 +68,8 @@ const dictComponents: Record<string, any> = {
     cambridge: CambridgeView,
     hjdict: HjdictView,
     deepl: DeepLView,
+    ai: AiView,
+    free: FreeView,
 };
 
 // 省略组件注册
@@ -74,11 +78,18 @@ let map: Record<string, number> = {};
 let loadings = ref<boolean[]>([]);
 let shows = ref<boolean[]>([]);
 
-// 初始化词典列表
-const enabledDicts = ["youdao", "cambridge", "hjdict", "deepl"];
-const dictNames: Record<string, string> = {
-    youdao: "Youdao", cambridge: "Cambridge", hjdict: "Hujiang", deepl: "DeepL",
+// 初始化词典列表（从 settings.dictionaries 动态读取，含 AI / Free）
+const allDictDefs: Record<string, { name: string }> = {
+    youdao: "有道", cambridge: "Cambridge", hjdict: "沪江", deepl: "DeepL",
+    ai: "AI 释义", free: "免费翻译",
 };
+const enabledDicts = Object.entries(plugin.settings.dictionaries || {})
+    .filter(([, cfg]) => cfg.enable)
+    .map(([id]) => id);
+const dictNames: Record<string, string> = {};
+for (const id of enabledDicts) {
+    dictNames[id] = allDictDefs[id] || id;
+}
 
 components.value = enabledDicts.map((id) => ({
     id,
@@ -128,7 +139,7 @@ function appendHistory() {
     historyIndex.value++;
     // 持久化
     plugin.settings.search_history = history.slice();
-    plugin.saveData(plugin.settings);
+    plugin.saveSettings();
 }
 
 let inputWord = ref("");

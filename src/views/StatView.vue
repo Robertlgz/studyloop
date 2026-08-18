@@ -69,7 +69,7 @@ const stats = computed(() => {
 });
 
 const streak = computed(() => {
-    return plugin.wordStore["reviewStreak"]?.current || 0;
+    return plugin.wordStore.getStreak();
 });
 
 const statusData = computed(() => {

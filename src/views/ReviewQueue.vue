@@ -18,7 +18,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, getCurrentInstance } from "vue";
+import { ref, computed, onMounted, onUnmounted, getCurrentInstance } from "vue";
 import type StudyLoop from "@/main";
 import { getDueWords } from "@/scheduling/fsrs";
 
@@ -27,16 +27,17 @@ const plugin = getCurrentInstance()!.appContext.config.globalProperties.plugin a
 const statusLabels = ["忽略", "学习中", "熟悉", "掌握", "精通"];
 function statusLabel(s: number) { return statusLabels[s] || ""; }
 
-const dueWords = computed(() => getDueWords(plugin.wordStore.getAllWords()));
+// 用响应式 key 触发 computed 重新计算
+const refreshKey = ref(0);
+function forceRefresh() { refreshKey.value++; }
+
+const dueWords = computed(() => { refreshKey.value; return getDueWords(plugin.wordStore.getAllWords()); });
 const dueCount = computed(() => dueWords.value.length);
 const totalCount = computed(() => plugin.wordStore.getAllWords().length);
 
-// 监听刷新事件
-onMounted(() => {
-    addEventListener("sl-refresh", () => {
-        // 强制重新计算
-    });
-});
+addEventListener("sl-word-store-changed", forceRefresh);
+onUnmounted(() => removeEventListener("sl-word-store-changed", forceRefresh));
+defineExpose({ refresh: forceRefresh });
 </script>
 
 <style scoped>

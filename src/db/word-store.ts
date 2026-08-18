@@ -154,6 +154,8 @@ export class WordStore {
         this.dirty = true;
         if (this.saveTimer !== null) clearTimeout(this.saveTimer);
         this.saveTimer = window.setTimeout(() => this.save(), 500);
+        // 派发事件通知视图刷新
+        dispatchEvent(new CustomEvent("sl-word-store-changed"));
     }
 
     private initializeEmpty() {

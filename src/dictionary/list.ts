@@ -22,7 +22,7 @@ export function getEngines(enabledIds: string[]): DictionaryEngine[] {
     return active;
 }
 
-// 按优先级依次查，第一个返回 lex 结果的胜出
+// 按优先级依次查，第一个返回 lex 结果的胜出（保留向后兼容）
 export async function searchAll(
     word: string,
     enabledIds: string[],
@@ -32,7 +32,6 @@ export async function searchAll(
         try {
             const result = await engine.search(word, config);
             if (result && result.meaningHTML) {
-                // 第一个有释义的引擎胜出
                 return { engine, result };
             }
         } catch {
@@ -40,6 +39,39 @@ export async function searchAll(
         }
     }
     return null;
+}
+
+/**
+ * 多源并行查询：所有启用词典同时查，返回每个有结果的源
+ * 用于 PopupSearch / 新版 SearchPanel 展示多源结果
+ */
+export interface SourceResult {
+    engine: DictionaryEngine;
+    result: EngineResult;
+}
+
+export async function searchAllParallel(
+    word: string,
+    enabledIds: string[],
+    config?: any,
+): Promise<SourceResult[]> {
+    const activeEngines = getEngines(enabledIds);
+    const results = await Promise.allSettled(
+        activeEngines.map(async (engine) => {
+            try {
+                const result = await engine.search(word, config);
+                if (result && (result.meaningHTML || result.translationHTML)) {
+                    return { engine, result };
+                }
+            } catch {
+                // 该源查询失败，跳过
+            }
+            return null;
+        }),
+    );
+    return results.filter((r): r is PromiseFulfilledResult<SourceResult> =>
+        r.status === "fulfilled" && r.value !== null,
+    ).map(r => r.value);
 }
 
 export { engines };
