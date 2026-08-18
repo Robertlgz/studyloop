@@ -1,5 +1,38 @@
 # Changelog
 
+## 0.10.4 (2026-08-18) — PopupSearch 综合优化
+
+- ✅ 短语查词：支持多词词组（如 "look forward to"）整体查询
+- ✅ 智能首源优先：第一个有结果的源默认展开，其余折叠
+- ✅ 查词历史持久化：localStorage 存最近 30 条，重启不丢失
+- ✅ 底部计数：显示 `n/m 个源有结果`，一目了然
+- ✅ 诊断提示：无结果时列出已启用词典，便于排查网络问题
+- ✅ 卡片 meta 显示发音数量（如 `🔊 2`）
+- ✅ 加入词库按钮防重：显示 ✓ 已加入
+
+## 0.10.3 (2026-08-18) — PopupSearch 拖拽浮动
+
+- ✅ 拖拽浮动：按住标题栏拖动弹窗，松开固定（仿 LL 行为）
+- ✅ 点击外部自动关闭
+- ✅ 来源计数 + 诊断提示
+- ✅ adding 状态防重点击
+
+## 0.10.2 (2026-08-18) — Bug 修复 + 多源查词
+
+- ✅ PopupSearch 改 searchAllParallel 并行多源
+- ✅ SearchPanel 词典列表从 settings 动态读取
+- ✅ 新建 ai/View.vue + free/View.vue
+- ✅ StatView streak → getStreak()
+- ✅ ReviewQueue 响应式刷新（sl-word-store-changed 事件）
+- ✅ word-store markDirty 派发事件
+
+## 0.10.1 (2026-08-18) — manifest 乱码修复 + 版本统一
+
+- ✅ manifest.json 描述 GBK 乱码修复（UTF-8 正确写入）
+- ✅ 版本统一到 0.10.0（package.json / manifest.json / versions.json）
+
+---
+
 ## 0.10.0 (2026-08-18) — P2/P3 优化轮
 
 ### A 类：假功能修真
